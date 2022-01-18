@@ -1,30 +1,30 @@
-void constructSeedsUpperPyramidal(vector<set<int>> &seeds, uint32_t numSubdomains, uint32_t N)
+void constructSeedsUpperPyramidal(meshPartitionForStage &partition, uint32_t N)
 {
 	// Initialize seed set
 	set<int> seedSet;
 
 	// Insert seed 0
 	seedSet.insert(0);
-	seeds.push_back(seedSet);
+	partition.seeds.push_back(seedSet);
 
 	// Insert seed 1
 	seedSet.clear();
 	seedSet.insert(N-1);
-	seeds.push_back(seedSet);
+	partition.seeds.push_back(seedSet);
 
 	// Insert seed 2
 	seedSet.clear();
 	seedSet.insert(N*N-N);
-	seeds.push_back(seedSet);
+	partition.seeds.push_back(seedSet);
 
 	// Insert seed 3
 	seedSet.clear();
 	seedSet.insert(N*N-1);
-	seeds.push_back(seedSet);
+	partition.seeds.push_back(seedSet);
 
 }
 
-void constructSeedsBridge(vector<set<int>> &seeds, uint32_t numSubdomains, uint32_t N)
+void constructSeedsBridge(meshPartitionForStage &partition, uint32_t N)
 {
 	// Initialize seed set
 	set<int> seedSet;
@@ -35,31 +35,31 @@ void constructSeedsBridge(vector<set<int>> &seeds, uint32_t numSubdomains, uint3
 	for (int i = 1; i < N-1; i++) {
 		seedSet.insert(i);
 	}
-	seeds.push_back(seedSet);
+	partition.seeds.push_back(seedSet);
 	
 	// 1 - Left
 	seedSet.clear();
 	for (int i = N; i < N*N-N; i += N) {
 		seedSet.insert(i);
 	}
-	seeds.push_back(seedSet);
+	partition.seeds.push_back(seedSet);
 
 	// 2 - Right
 	seedSet.clear();
 	for (int i = 2*N-1; i < N*N-1; i += N) {
 		seedSet.insert(i);
 	}
-	seeds.push_back(seedSet);
+	partition.seeds.push_back(seedSet);
 
 	// 3 - Top	
 	seedSet.clear();
 	for (int i = N*N-N+1; i < N*N-1; i++) {
 		seedSet.insert(i);
 	}
-	seeds.push_back(seedSet);
+	partition.seeds.push_back(seedSet);
 }
 
-void constructSeedsLowerPyramidal(vector<set<int>> &seeds, uint32_t numSubdomains, uint32_t N)
+void constructSeedsLowerPyramidal(meshPartitionForStage &partition, uint32_t N)
 {
 	// Initialize seed set
 	set<int> seedSet;
@@ -77,11 +77,11 @@ void constructSeedsLowerPyramidal(vector<set<int>> &seeds, uint32_t numSubdomain
 	seedSet.insert(topRight);
 
 	// Add set to vector
-	seeds.push_back(seedSet);
+	partition.seeds.push_back(seedSet);
 }
 
 
-void constructSeedsDualBridge(vector<set<int>> &seeds, uint32_t numSubdomains, uint32_t N)
+void constructSeedsDualBridge(meshPartitionForStage &partition, uint32_t N)
 {
 	// Initialize seed set
 	set<int> seedSet;
@@ -96,7 +96,7 @@ void constructSeedsDualBridge(vector<set<int>> &seeds, uint32_t numSubdomains, u
 		seedSet.insert(bottom1);
 		seedSet.insert(bottom2);
 	}
-	seeds.push_back(seedSet);
+	partition.seeds.push_back(seedSet);
 
 	// Left side seeds
 	seedSet.clear();
@@ -106,7 +106,7 @@ void constructSeedsDualBridge(vector<set<int>> &seeds, uint32_t numSubdomains, u
 		seedSet.insert(left1);
 		seedSet.insert(left2);
 	}
-	seeds.push_back(seedSet);
+	partition.seeds.push_back(seedSet);
 		
 	// Right side seeds
 	seedSet.clear();
@@ -116,7 +116,7 @@ void constructSeedsDualBridge(vector<set<int>> &seeds, uint32_t numSubdomains, u
 		seedSet.insert(right1);
 		seedSet.insert(right2);
 	}
-	seeds.push_back(seedSet);
+	partition.seeds.push_back(seedSet);
 
 	// Top side seeds
 	seedSet.clear();
@@ -126,6 +126,6 @@ void constructSeedsDualBridge(vector<set<int>> &seeds, uint32_t numSubdomains, u
 		seedSet.insert(top1);
 		seedSet.insert(top2);
 	}
-	seeds.push_back(seedSet);
+	partition.seeds.push_back(seedSet);
 
 }
