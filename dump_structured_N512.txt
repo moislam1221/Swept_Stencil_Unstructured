@@ -1,0 +1,25 @@
+==================== SHARED MEMORY ALGORITHM =========================
+==================== PERFORMING UPPER PYRAMIDAL PARTITIONING =========================
+The shared memory size is 19712
+==================== PERFORMING BRIDGE PARTITIONING =========================
+The shared memory size is 16160
+==================== PERFORMING LOWER PYRAMIDAL PARTITIONING =========================
+The shared memory size is 18452
+==================== PERFORMING DUAL BRIDGE PARTITIONING =========================
+The shared memory size is 15588
+==================== GLOBAL MEMORY ALGORITHM =========================
+The initial residual is 512.000000
+======================= CYCLE START =========================================
+==================== FINAL INFORMATION =========================
+====================================RESIDUAL====================================================
+Global: The initial residual was 512.000000 while the final residual is 30.302046
+Swept: The initial residual was 512.000000 while the final residual is 30.302046
+===================================TIME INFORMATION=============================================
+Global: Elapsed time in ms 60609.023438
+Swept: Elapsed time in ms 10061.372070
+Time for upper pyramidal is 2694.511719
+Time for bridge is 2395.567627
+Time for lower pyramidal is 2569.634766
+Time for dual bridge is 2401.514648
+Time for final step is 0.143872
+Speedup is 6.023932

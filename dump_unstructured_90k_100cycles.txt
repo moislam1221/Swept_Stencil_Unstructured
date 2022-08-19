@@ -1,0 +1,134 @@
+==================== GLOBAL MEMORY ALGORITHM =========================
+The initial residual is 1.474068
+GLOBAL MEMORY ITERATIONS: The initial residual is 1.474068 but the final residual after 1200 iterations is 0.611078
+Number of Iterations = 1200
+==================== SHARED MEMORY ALGORITHM =========================
+==================== PERFORMING UPPER PYRAMIDAL PARTITIONING =========================
+The shared memory size is 29624
+==================== PERFORMING BRIDGE PARTITIONING =========================
+The shared memory size is 42520
+
+The global and shared match for all DOFs at iteration 1200: 1
+0
+The residual after stage 2 is 1.406215
+==================== PERFORMING LOWER PYRAMIDAL PARTITIONING =========================
+The shared memory size is 37620
+The residual after stage 3 is 1.385740
+==================== PERFORMING DUAL BRIDGE PARTITIONING =========================
+The shared memory size is 45768
+The residual after stage 4 is 1.385740
+======================= CYCLE START =========================================
+CYCLE 0
+CYCLE 1
+CYCLE 2
+CYCLE 3
+CYCLE 4
+CYCLE 5
+CYCLE 6
+CYCLE 7
+CYCLE 8
+CYCLE 9
+CYCLE 10
+CYCLE 11
+CYCLE 12
+CYCLE 13
+CYCLE 14
+CYCLE 15
+CYCLE 16
+CYCLE 17
+CYCLE 18
+CYCLE 19
+CYCLE 20
+CYCLE 21
+CYCLE 22
+CYCLE 23
+CYCLE 24
+CYCLE 25
+CYCLE 26
+CYCLE 27
+CYCLE 28
+CYCLE 29
+CYCLE 30
+CYCLE 31
+CYCLE 32
+CYCLE 33
+CYCLE 34
+CYCLE 35
+CYCLE 36
+CYCLE 37
+CYCLE 38
+CYCLE 39
+CYCLE 40
+CYCLE 41
+CYCLE 42
+CYCLE 43
+CYCLE 44
+CYCLE 45
+CYCLE 46
+CYCLE 47
+CYCLE 48
+CYCLE 49
+CYCLE 50
+CYCLE 51
+CYCLE 52
+CYCLE 53
+CYCLE 54
+CYCLE 55
+CYCLE 56
+CYCLE 57
+CYCLE 58
+CYCLE 59
+CYCLE 60
+CYCLE 61
+CYCLE 62
+CYCLE 63
+CYCLE 64
+CYCLE 65
+CYCLE 66
+CYCLE 67
+CYCLE 68
+CYCLE 69
+CYCLE 70
+CYCLE 71
+CYCLE 72
+CYCLE 73
+CYCLE 74
+CYCLE 75
+CYCLE 76
+CYCLE 77
+CYCLE 78
+CYCLE 79
+CYCLE 80
+CYCLE 81
+CYCLE 82
+CYCLE 83
+CYCLE 84
+CYCLE 85
+CYCLE 86
+CYCLE 87
+CYCLE 88
+CYCLE 89
+CYCLE 90
+CYCLE 91
+CYCLE 92
+CYCLE 93
+CYCLE 94
+CYCLE 95
+CYCLE 96
+CYCLE 97
+CYCLE 98
+CYCLE 99
+
+==================== FINAL INFORMATION =========================
+========================RESIDUAL=====================================================================
+Global: The initial residual was 1.474068 while the final residual is 0.611078
+Swept: The initial residual was 1.474068 while the final residual is 0.611078
+========================TIME INFORMATION==============================================================
+Global: Elapsed time in ms 91.294975
+Swept: Elapsed time in microseconds 38.896542
+Time for upper pyramidal is 9.166240
+Time for bridge is 10.852160
+Time for lower pyramidal is 7.028000
+Time for dual bridge is 11.785343
+Time for final step is 0.064800
+Speedup is 2.347123

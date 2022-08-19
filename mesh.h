@@ -1,4 +1,4 @@
-void construct2DConnectivity(matrixInfo &matrix, uint32_t N)
+void construct2DConnectivity(linearSystem &matrix, uint32_t N)
 {
     matrix.indexPtr[0] = 0;
     int idx = 0;
@@ -49,7 +49,7 @@ void construct2DConnectivity(matrixInfo &matrix, uint32_t N)
     }
 }
 
-void construct2DConnectivity_DiagonalLinks(matrixInfo &matrix, uint32_t N)
+void construct2DConnectivity_DiagonalLinks(linearSystem &matrix, uint32_t N)
 {
 	// Initialize neighbor DOF variables
     uint32_t swDOF, bottomDOF, seDOF, leftDOF, rightDOF, nwDOF, topDOF, neDOF, dof;
@@ -88,7 +88,7 @@ void construct2DConnectivity_DiagonalLinks(matrixInfo &matrix, uint32_t N)
             // Bottom
             if (iy > 0) {
                 matrix.nodeNeighbors[idx] = bottomDOF;
-                matrix.offdiags[idx] = -2.0/(dx*dx);
+                matrix.offdiags[idx] = -1.0/(dx*dx);
                 idx += 1;
                 idxPtrShift += 1;
             }
@@ -102,14 +102,14 @@ void construct2DConnectivity_DiagonalLinks(matrixInfo &matrix, uint32_t N)
             // Left
             if (ix > 0) {
                 matrix.nodeNeighbors[idx] = leftDOF;
-                matrix.offdiags[idx] = -2.0/(dx*dx);
+                matrix.offdiags[idx] = -1.0/(dx*dx);
                 idx += 1;
                 idxPtrShift += 1;
             }
             // Right
             if (ix < N-1) {
                 matrix.nodeNeighbors[idx] = rightDOF;
-                matrix.offdiags[idx] = -2.0/(dx*dx);
+                matrix.offdiags[idx] = -1.0/(dx*dx);
                 idx += 1;
                 idxPtrShift += 1;
             }
@@ -123,7 +123,7 @@ void construct2DConnectivity_DiagonalLinks(matrixInfo &matrix, uint32_t N)
             // Top
             if (iy < N-1) {
                 matrix.nodeNeighbors[idx] = topDOF;
-                matrix.offdiags[idx] = -2.0/(dx*dx);
+                matrix.offdiags[idx] = -1.0/(dx*dx);
                 idx += 1;
                 idxPtrShift += 1;
             }

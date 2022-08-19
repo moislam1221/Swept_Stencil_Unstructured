@@ -1,0 +1,35 @@
+==================== GLOBAL MEMORY ALGORITHM =========================
+The initial residual is 1.474068
+GLOBAL MEMORY ITERATIONS: The initial residual is 1.474068 but the final residual after 12 iterations is 1.345991
+Number of Iterations = 12
+==================== SHARED MEMORY ALGORITHM =========================
+==================== PERFORMING UPPER PYRAMIDAL PARTITIONING =========================
+The shared memory size is 29624
+==================== PERFORMING BRIDGE PARTITIONING =========================
+The shared memory size is 42520
+
+The global and shared match for all DOFs at iteration 12: 1
+0
+The residual after stage 2 is 1.406215
+==================== PERFORMING LOWER PYRAMIDAL PARTITIONING =========================
+The shared memory size is 37620
+The residual after stage 3 is 1.385740
+==================== PERFORMING DUAL BRIDGE PARTITIONING =========================
+The shared memory size is 45768
+The residual after stage 4 is 1.385740
+======================= CYCLE START =========================================
+CYCLE 0
+
+==================== FINAL INFORMATION =========================
+========================RESIDUAL=====================================================================
+Global: The initial residual was 1.474068 while the final residual is 1.345991
+Swept: The initial residual was 1.474068 while the final residual is 1.345991
+========================TIME INFORMATION==============================================================
+Global: Elapsed time in ms 0.991712
+Swept: Elapsed time in microseconds 0.510080
+Time for upper pyramidal is 0.088000
+Time for bridge is 0.126208
+Time for lower pyramidal is 0.084256
+Time for dual bridge is 0.136832
+Time for final step is 0.074784
+Speedup is 1.944228
