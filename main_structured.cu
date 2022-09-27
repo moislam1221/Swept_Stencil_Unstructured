@@ -11,7 +11,7 @@ using namespace std;
 #include "structs.h"
 #include "helper.h"
 #include "mesh.h"
-#include "seeds.h"
+#include "structured.h"
 #include "subdomains.h"
 #include "initialize.h"
 #include "toDevice.h"
@@ -22,14 +22,14 @@ using namespace std;
 #include "print.h"
 #include "debug.h"
 
-// # define PRINT_SOLUTION
+//# define PRINT_SOLUTION
 
 int main (int argc, char * argv[]) 
 {
     // INPUTS
-    uint32_t N = 1024; //1024;
+    uint32_t N = 32; //1024;
     uint32_t nPerSub = 16; // 16; // each subdomain is Nsub by Nsub
-	uint32_t numSweptCycles = 10000; // 10000;
+	uint32_t numSweptCycles = 1; // 10000;
 	uint32_t nSub = N / nPerSub; // Number of subdomains in 1D direction
 	
 	// Define the linear system Ax = b
@@ -63,7 +63,7 @@ int main (int argc, char * argv[])
 	cudaMalloc(&evenSolutionBuffer_d, sizeof(float) * matrix.Ndofs);
 	cudaMalloc(&oddSolutionBuffer_d, sizeof(float) * matrix.Ndofs);
 	cudaMalloc(&solution_d, sizeof(float) * matrix.Ndofs);
-	uint32_t threadsPerBlock = 256;
+	uint32_t threadsPerBlock = 512;
 	uint32_t numBlocks = ceil((float)matrix.Ndofs / threadsPerBlock);
 	initializeToZerosDevice<<<numBlocks, threadsPerBlock>>>(evenSolutionBuffer_d, matrix.Ndofs);	
 	initializeToZerosDevice<<<numBlocks, threadsPerBlock>>>(oddSolutionBuffer_d, matrix.Ndofs);	
@@ -103,6 +103,12 @@ int main (int argc, char * argv[])
 	printDeviceSolutionInt(iterationLevel_d, matrix.Ndofs, N);	
 #endif
 	printf("The number of subdomains are %d\n", upperPyramidal.numSubdomains);
+
+	// Compute residual	
+	printf("====================================RESIDUAL====================================================\n");
+	float residual = computeL2Residual(solution_d, matrix_d);
+	printf("Stage 1: The final residual is %f\n", residual);
+	// printDeviceSolutionInt(iterationLevel_d, matrix.Ndofs, N);	
 	
 	/*************** STAGE 2: BRIDGE STAGE ************************/
 	
@@ -138,6 +144,12 @@ int main (int argc, char * argv[])
 #endif
 	printf("The number of subdomains are %d\n", bridge.numSubdomains);
 	
+	// Compute residual	
+	printf("====================================RESIDUAL====================================================\n");
+	residual = computeL2Residual(solution_d, matrix_d);
+	printf("Stage 2: The final residual is %f\n", residual);
+	// printDeviceSolutionInt(iterationLevel_d, matrix.Ndofs, N);	
+	
 	/*************** STAGE 3: LOWER PYRAMIDAL STAGE ************************/
 	
 	printf("==================== PERFORMING LOWER PYRAMIDAL PARTITIONING =========================\n");
@@ -161,8 +173,10 @@ int main (int argc, char * argv[])
 	copyPartitionDevice(lowerPyramidal_d, lowerPyramidal, Ndofs);
 	
 	// JACOBI
-	determineSharedMemoryAllocation(lowerPyramidal);
-	stageAdvanceJacobiPerformance<<<lowerPyramidal.numSubdomains, 512, lowerPyramidal.sharedMemorySize>>>(evenSolutionBuffer_d, oddSolutionBuffer_d, iterationLevel_d, lowerPyramidal_d, 0, numJacobiSteps);
+    //determineSharedMemoryAllocation(lowerPyramidal);
+    determineSharedMemoryAllocationSolutionOnly(lowerPyramidal);
+	// stageAdvanceJacobiPerformance<<<lowerPyramidal.numSubdomains, 1024, lowerPyramidal.sharedMemorySize>>>(evenSolutionBuffer_d, oddSolutionBuffer_d, iterationLevel_d, lowerPyramidal_d, 0, numJacobiSteps);
+    stageAdvanceJacobiPerformanceSolutionOnly<<<lowerPyramidal.numSubdomains, 1024, lowerPyramidal.sharedMemorySize>>>(evenSolutionBuffer_d, oddSolutionBuffer_d, iterationLevel_d, lowerPyramidal_d, 0, numJacobiSteps);
 	
 	// POSTPROCESSING	
 	assembleSolutionFromBuffers<<<numBlocks, threadsPerBlock>>>(solution_d, evenSolutionBuffer_d, oddSolutionBuffer_d, iterationLevel_d, Ndofs);
@@ -172,7 +186,14 @@ int main (int argc, char * argv[])
 	printHostSolutionInt(lowerPyramidal.subdomainOfDOFs, matrix.Ndofs, N);	
 	printDeviceSolutionInt(iterationLevel_d, matrix.Ndofs, N);	
 #endif
-	printf("The number of subdomains are %d\n", lowerPyramidal.numSubdomains);
+	printf("The number of subdomains are %d\n", lowerPyramidal.numSubdomains);\
+
+	// Compute residual	
+	printf("====================================RESIDUAL====================================================\n");
+	residual = computeL2Residual(solution_d, matrix_d);
+	printf("Stage 3: The final residual is %f\n", residual);
+	// printHostSolutionInt(lowerPyramidal.subdomainOfDOFs, matrix.Ndofs, N);	
+	// printDeviceSolutionInt(iterationLevel_d, matrix.Ndofs, N);	
 	
 	/*************** STAGE 4: DUAL BRIDGE STAGE ************************/
 	
@@ -208,6 +229,11 @@ int main (int argc, char * argv[])
 #endif
 	printf("The number of subdomains are %d\n", dualBridge.numSubdomains);
 	
+	// Compute residual	
+	printf("====================================RESIDUAL====================================================\n");
+	residual = computeL2Residual(solution_d, matrix_d);
+	printf("Stage 4: The final residual is %f\n", residual);
+	
 	/*************** GLOBAL MEMORY START **************************/
 	
 	printf("==================== GLOBAL MEMORY ALGORITHM =========================\n");
@@ -226,7 +252,8 @@ int main (int argc, char * argv[])
     cudaMemcpy(du1_d, du1, sizeof(float) * Ndofs, cudaMemcpyHostToDevice);
 
 	// Initial L2 residual
-	float residual, residualInit;
+	// float residual, residualInit;
+	float residualInit;
 	residual = computeL2Residual(du0_d, matrix_d);
 	residualInit = residual;
 	printf("The initial residual is %f\n", residual);
@@ -318,11 +345,13 @@ int main (int argc, char * argv[])
 
 		// STAGE 1: UPPER PYRAMIDAL
 		cudaEventRecord(start_1, 0);
-		stageAdvanceJacobiPerformance<<<upperPyramidal.numSubdomains, 256, upperPyramidal.sharedMemorySize>>>(evenSolutionBuffer_d, oddSolutionBuffer_d, iterationLevel_d, upperPyramidal_d, minJacobiIters, maxJacobiIters, maxJacobiShift);
+		stageAdvanceJacobiPerformance<<<upperPyramidal.numSubdomains, 512, upperPyramidal.sharedMemorySize>>>(evenSolutionBuffer_d, oddSolutionBuffer_d, iterationLevel_d, upperPyramidal_d, minJacobiIters, maxJacobiIters, maxJacobiShift);
 		cudaEventRecord(stop_1, 0);
 		cudaEventSynchronize(stop_1);
 		cudaEventElapsedTime(&time_stage_1, start_1, stop_1);
 		time_total_1 += time_stage_1;
+		// printf("===========================================\n");
+		// printDeviceSolutionInt(iterationLevel_d, matrix.Ndofs, N);	
 		
 		// Set lower bound for Jacobi iterations
 		if (sweptIteration > 0) {
@@ -331,33 +360,40 @@ int main (int argc, char * argv[])
 
 		// STAGE 2: BRIDGE STAGE
 		cudaEventRecord(start_2, 0);
-		stageAdvanceJacobiPerformance<<<bridge.numSubdomains, 256, bridge.sharedMemorySize>>>(evenSolutionBuffer_d, oddSolutionBuffer_d, iterationLevel_d, bridge_d, minJacobiIters, maxJacobiIters, maxJacobiShift);
+		stageAdvanceJacobiPerformance<<<bridge.numSubdomains, 512, bridge.sharedMemorySize>>>(evenSolutionBuffer_d, oddSolutionBuffer_d, iterationLevel_d, bridge_d, minJacobiIters, maxJacobiIters, maxJacobiShift);
 		cudaEventRecord(stop_2, 0);
 		cudaEventSynchronize(stop_2);
 		cudaEventElapsedTime(&time_stage_2, start_2, stop_2);
 		time_total_2 += time_stage_2;
+		// printf("===========================================\n");
+		// printDeviceSolutionInt(iterationLevel_d, matrix.Ndofs, N);	
 
 		// Set number of Jacobi iterations for second two stages
 		maxJacobiIters += (nPerSub-1)/2;
 		
 		// STAGE 3: LOWER PYRAMIDAL STAGE
 		cudaEventRecord(start_3, 0);
-		stageAdvanceJacobiPerformance<<<lowerPyramidal.numSubdomains, 256, lowerPyramidal.sharedMemorySize>>>(evenSolutionBuffer_d, oddSolutionBuffer_d, iterationLevel_d, lowerPyramidal_d, minJacobiIters, maxJacobiIters, maxJacobiShift);
+		stageAdvanceJacobiPerformanceSolutionOnly<<<lowerPyramidal.numSubdomains, 1024, lowerPyramidal.sharedMemorySize>>>(evenSolutionBuffer_d, oddSolutionBuffer_d, iterationLevel_d, lowerPyramidal_d, minJacobiIters, maxJacobiIters, maxJacobiShift);
+        // stageAdvanceJacobiPerformanceSolutionOnly<<<lowerPyramidal.numSubdomains, 1024, lowerPyramidal.sharedMemorySize>>>(evenSolutionBuffer_d, oddSolutionBuffer_d, iterationLevel_d, lowerPyramidal_d, maxJacobiIters, maxJacobiShift);
 		cudaEventRecord(stop_3, 0);
 		cudaEventSynchronize(stop_3);
 		cudaEventElapsedTime(&time_stage_3, start_3, stop_3);
 		time_total_3 += time_stage_3;
+		// printf("===========================================\n");
+		// printDeviceSolutionInt(iterationLevel_d, matrix.Ndofs, N);	
 		
 		// Set lower bound for Jacobi iterations
 		minJacobiIters += (nPerSub-1)/2;
 
 		// STAGE 4: DUAL BRIDGE STAGE
 		cudaEventRecord(start_4, 0);
-		stageAdvanceJacobiPerformance<<<dualBridge.numSubdomains, 256, dualBridge.sharedMemorySize>>>(evenSolutionBuffer_d, oddSolutionBuffer_d, iterationLevel_d, dualBridge_d, minJacobiIters, maxJacobiIters, maxJacobiShift);
+		stageAdvanceJacobiPerformance<<<dualBridge.numSubdomains, 512, dualBridge.sharedMemorySize>>>(evenSolutionBuffer_d, oddSolutionBuffer_d, iterationLevel_d, dualBridge_d, minJacobiIters, maxJacobiIters, maxJacobiShift);
 		cudaEventRecord(stop_4, 0);
 		cudaEventSynchronize(stop_4);
 		cudaEventElapsedTime(&time_stage_4, start_4, stop_4);
 		time_total_4 += time_stage_4;
+		// printf("===========================================\n");
+		// printDeviceSolutionInt(iterationLevel_d, matrix.Ndofs, N);	
 
 	}
 
@@ -367,10 +403,12 @@ int main (int argc, char * argv[])
 	
 	// FINAL STAGE	
 	cudaEventRecord(start_5, 0);
-	stageAdvanceJacobiPerformance<<<upperPyramidal.numSubdomains, 256, upperPyramidal.sharedMemorySize>>>(evenSolutionBuffer_d, oddSolutionBuffer_d, iterationLevel_d, upperPyramidal_d, minJacobiIters, maxJacobiIters, maxJacobiShift, finalStage);
+	stageAdvanceJacobiPerformance<<<upperPyramidal.numSubdomains, 512, upperPyramidal.sharedMemorySize>>>(evenSolutionBuffer_d, oddSolutionBuffer_d, iterationLevel_d, upperPyramidal_d, minJacobiIters, maxJacobiIters, maxJacobiShift, finalStage);
 	cudaEventRecord(stop_5, 0);
 	cudaEventSynchronize(stop_5);
 	cudaEventElapsedTime(&time_total_5, start_5, stop_5);
+	// printf("===========================================\n");
+	// printDeviceSolutionInt(iterationLevel_d, matrix.Ndofs, N);	
 
 	// INFORMATION
 	

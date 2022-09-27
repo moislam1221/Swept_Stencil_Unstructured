@@ -48,8 +48,6 @@ void allocatePartitionDevice(meshPartitionForStageDevice &partition_d, meshParti
 	cudaMalloc(&partition_d.indexPtrDataShiftSubdomain_d, sizeof(float) * (partition.numSubdomains+1));
 	cudaMalloc(&partition_d.rhsLocal_d, sizeof(float) * numElems);
 	cudaMalloc(&partition_d.diagInvLocal_d, sizeof(float) * numElems);
-	cudaMalloc(&partition_d.diagInvLocal_d, sizeof(float) * numElems);
-	cudaMalloc(&partition_d.diagInvLocal_d, sizeof(float) * numElems);
 	cudaMalloc(&partition_d.numDOFsInteriorPerSubdomain_d, sizeof(uint32_t) * numSubdomains);
 	cudaMalloc(&partition_d.numDOFsToReturnPerSubdomain_d, sizeof(uint32_t) * numSubdomains);
 }	
@@ -57,6 +55,7 @@ void allocatePartitionDevice(meshPartitionForStageDevice &partition_d, meshParti
 // Copy
 void copyPartitionDevice(meshPartitionForStageDevice &partition_d, meshPartitionForStage partition, uint32_t Ndofs)
 {
+
 	uint32_t numSubdomains = partition.numSubdomains;
 	uint32_t numElems = partition.territoryIndexPtr[numSubdomains];
 	partition_d.numSubdomains = numSubdomains;
@@ -80,8 +79,9 @@ void copyPartitionDevice(meshPartitionForStageDevice &partition_d, meshPartition
 	cudaMemcpy(partition_d.indexPtrDataShiftSubdomain_d, partition.indexPtrDataShiftSubdomain, sizeof(uint32_t) * (partition.numSubdomains+1), cudaMemcpyHostToDevice);
 	cudaMemcpy(partition_d.rhsLocal_d, partition.rhsLocal, sizeof(float) * numElems, cudaMemcpyHostToDevice);
 	cudaMemcpy(partition_d.diagInvLocal_d, partition.diagInvLocal, sizeof(float) * numElems, cudaMemcpyHostToDevice);
-	cudaMemcpy(partition_d.numDOFsInteriorPerSubdomain_d, partition.numDOFsInteriorPerSubdomain, sizeof(uint32_t) * numSubdomains, cudaMemcpyHostToDevice);
-	cudaMemcpy(partition_d.numDOFsToReturnPerSubdomain_d, partition.numDOFsToReturnPerSubdomain, sizeof(uint32_t) * numSubdomains, cudaMemcpyHostToDevice);
+	cudaMemcpy(partition_d.numDOFsInteriorPerSubdomain_d, partition.numDOFsInteriorPerSubdomain.data(), sizeof(uint32_t) * numSubdomains, cudaMemcpyHostToDevice);
+	cudaMemcpy(partition_d.numDOFsToReturnPerSubdomain_d, partition.numDOFsToReturnPerSubdomain.data(), sizeof(uint32_t) * numSubdomains, cudaMemcpyHostToDevice);
+
 }
 
 /* Solution Data Transfer To Device */

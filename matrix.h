@@ -50,51 +50,6 @@ void initializeAndLoadMatrixFromDirectoryDouble(linearSystemDouble &matrix, stri
 	}
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 void initializeAndLoadMatrixFromDirectory(linearSystem &matrix, string directory)
 {
 	// Number of DOFs
@@ -243,7 +198,7 @@ void constructLocalMatrices(meshPartitionForStage &partition, linearSystem matri
 		idx = 0;
 		lowerBound = partition.territoryIndexPtr[i];
 		upperBound = partition.territoryIndexPtr[i+1];
-		interiorDOFsInSubdomain = partition.numDOFsInteriorPerSubdomain[i];
+		interiorDOFsInSubdomain = partition.numDOFsInteriorPerSubdomain[i]; //partition.numDOFsInteriorPerSubdomainVec[i]; // replaced this with vec
 		// Fill up the local matrix data structures for this subdomain
 		// for (auto dof : partition.territoryDOFsInterior[i]) {
 		uint32_t shift = partition.territoryIndexPtr[i];

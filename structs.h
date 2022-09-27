@@ -45,41 +45,47 @@ struct meshPartitionForStage
 	// Number of subdomains in this partition
 	uint32_t numSubdomains;
 	
-	// Vectors of sets of seed amd territory DOFs (length of vector is number of subdomains)
-	vector<set<int>> seeds;
+    // Seed DOFs (this concept only used for structured case now)
+	vector<set<int>> seeds; 
+	uint32_t * subdomainOfDOFs; // only used in structured case
+
+	// Set of interior, ghost and overall DOFs
 	vector<vector<int>> territoryDOFsInterior;
 	vector<set<int>> territoryDOFsGhost;
+	uint32_t * territoryDOFs;
 
 	// Vectors of sets of iteration level
-	vector<vector<int>> iterationLevelPerDOF;
+	// Vector of interation level
+    vector<vector<int>> iterationLevelPerDOF;
+	// Flattened data
+    uint32_t * iterationLevelDOFs;
+	
+	// Read from file
+	vector<uint32_t> numDOFsInteriorPerSubdomain;
+	vector<uint32_t> numDOFsToReturnPerSubdomain; 
 
-	// Vector of local matrix data structures for each subdomain
+	// Territory Arrays on CPU
+	uint32_t * territoryIndexPtr;
+	uint32_t * territoryIndexPtrInterior;
+
+	// Local Matrix and rhs information on CPU
+	// Vector of L+U for each subdomain (needs to be flattened to data below)
 	vector<vector<int>> vectorOfIndexPtrs;
 	vector<vector<int>> vectorOfNodeNeighbors;
 	vector<vector<float>> vectorOfOffdiags;
-	
-	// Read from file
-	uint32_t * numDOFsInteriorPerSubdomain; 
-	uint32_t * numDOFsToReturnPerSubdomain; 
-
-	// Territory Arrays on CPU
-	uint32_t * subdomainOfDOFs;
-	uint32_t * territoryDOFs;
-	uint32_t * territoryIndexPtr;
-	uint32_t * iterationLevelDOFs;
-	uint32_t * territoryIndexPtrInterior;
-
-	// Local Matrix Array on CPU
+	// Flattened matrix data
+    // L + U
 	uint32_t * indexPtrSubdomain;
 	uint32_t * nodeNeighborsSubdomain;
 	float * offDiagsSubdomain;
+	// b
+    float * rhsLocal;
+	// D^{-1}
+    float * diagInvLocal;
+	// Index Ptrs to jump between subdomains
 	uint32_t * indexPtrDataShiftSubdomain;
 	uint32_t * indexPtrIndexPtrSubdomain;
 	
-	// Local rhs and Dinv entries on CPU
-	float * rhsLocal;
-	float * diagInvLocal;
-
 	// Shared Memory Allocation
 	uint32_t sharedMemorySize;
 
@@ -93,28 +99,27 @@ struct meshPartitionForStageDevice
 	// Read from file
 	uint32_t * numDOFsInteriorPerSubdomain_d; 
 	uint32_t * numDOFsToReturnPerSubdomain_d; 
+	uint32_t * iterationLevelDOFs_d; // Minimum/Maximum iterations for all interior/ext pts to undergo iterations
 	
 	// Territory Arrays on GPU
 	uint32_t * subdomainOfDOFs_d;
 	uint32_t * territoryDOFs_d;
 	uint32_t * territoryIndexPtr_d;
 	uint32_t * territoryIndexPtrInterior_d;
-	uint32_t * territoryIndexPtrInteriorExt_d;
 
-	// Minimum/Maximum iterations for all interior/ext pts to undergo iterations
-	uint32_t * iterationLevelDOFs_d;
-
-	// Local Matrix Array on GPU
+	// Local Matrix and rhs information on GPU
+    // L + U
 	uint32_t * indexPtrSubdomain_d;
 	uint32_t * nodeNeighborsSubdomain_d;
 	float * offDiagsSubdomain_d;
+	// b
+    float * rhsLocal_d;
+	// D^{-1}
+    float * diagInvLocal_d;
+	// Index Ptrs to jump between subdomains
 	uint32_t * indexPtrDataShiftSubdomain_d;
 	uint32_t * indexPtrIndexPtrSubdomain_d;
-
-	// Local rhs and Dinv entries on GPU
-	float * rhsLocal_d;
-	float * diagInvLocal_d;
-
+	
 };
 
 struct solutionDevice

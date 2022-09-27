@@ -1,3 +1,91 @@
+void newReadFileFunc(meshPartitionForStage &partition, std::string PARENT_DIRECTORY, uint32_t stageID)
+{
+	// ESTABLISH NAMING OF FILES BASED ON THE STAGE
+	std::string numDOFsInteriorFileNameBase;
+	std::string numDOFsToReturnFileNameBase;
+	std::string subdomainDOFsFileNameBase;
+	std::string iterationDOFsFileNameBase;
+	if (stageID == 0) {
+		numDOFsInteriorFileNameBase = PARENT_DIRECTORY + "numDofsInteriorPerSubdomain_1";
+		numDOFsToReturnFileNameBase = PARENT_DIRECTORY + "numDofsToReturnPerSubdomain_1";
+		subdomainDOFsFileNameBase = PARENT_DIRECTORY + "subdomain_1";
+		iterationDOFsFileNameBase = PARENT_DIRECTORY + "iteration_1";
+	}
+	else if (stageID == 1) {
+		numDOFsInteriorFileNameBase = PARENT_DIRECTORY + "numDofsInteriorPerSubdomain_2";
+		numDOFsToReturnFileNameBase = PARENT_DIRECTORY + "numDofsToReturnPerSubdomain_2";
+		subdomainDOFsFileNameBase = PARENT_DIRECTORY + "subdomain_2";
+		iterationDOFsFileNameBase = PARENT_DIRECTORY + "iteration_2";
+	}
+	else if (stageID == 2) {
+		numDOFsInteriorFileNameBase = PARENT_DIRECTORY + "numDofsInteriorPerSubdomain_3";
+		numDOFsToReturnFileNameBase = PARENT_DIRECTORY + "numDofsToReturnPerSubdomain_3";
+		subdomainDOFsFileNameBase = PARENT_DIRECTORY + "subdomain_3";
+		iterationDOFsFileNameBase = PARENT_DIRECTORY + "iteration_3";
+	}
+	else if (stageID == 3) {
+		numDOFsInteriorFileNameBase = PARENT_DIRECTORY + "numDofsInteriorPerSubdomain_4";
+		numDOFsToReturnFileNameBase = PARENT_DIRECTORY + "numDofsToReturnPerSubdomain_4";
+		subdomainDOFsFileNameBase = PARENT_DIRECTORY + "subdomain_4";
+		iterationDOFsFileNameBase = PARENT_DIRECTORY + "iteration_4";
+	}
+
+	// READ FILES
+
+    // Int container
+	uint32_t intFromFile;
+
+	// 1: Read number of dofs per subdomain
+	std::ifstream numDOFsInteriorPerSubdomainFile;
+    numDOFsInteriorPerSubdomainFile.open(numDOFsInteriorFileNameBase + ".txt");
+    while (numDOFsInteriorPerSubdomainFile >> intFromFile) {
+	    partition.numDOFsInteriorPerSubdomain.push_back(intFromFile);
+		// std::cout << intFromFile << std::endl;
+    }
+
+	// 2: Read number of dofs to return per subdomain
+	std::ifstream numDOFsToReturnPerSubdomainFile;
+	numDOFsToReturnPerSubdomainFile.open(numDOFsToReturnFileNameBase + ".txt");
+	while (numDOFsToReturnPerSubdomainFile >> intFromFile) {
+	    partition.numDOFsToReturnPerSubdomain.push_back(intFromFile);
+		// std::cout << intFromFile << std::endl;
+	}
+
+	// Create index ptr of dofs per subdomain
+    partition.numSubdomains = partition.numDOFsInteriorPerSubdomain.size();	
+    std::vector<uint32_t> indexPtrFile(partition.numSubdomains+1);
+	indexPtrFile[0] = 0;
+	for (int i = 0; i < partition.numSubdomains; i++) {
+		indexPtrFile[i+1] = indexPtrFile[i] + partition.numDOFsInteriorPerSubdomain[i];
+	}
+	
+	// Fill in vector of DOFs & corresponding Iteration Level  per subdomain
+	vector<int> subdomainDOFs;
+	vector<int> iterationDOFs;
+	std::ifstream subdomainFile(subdomainDOFsFileNameBase + ".txt");	
+	std::ifstream iterationFile(iterationDOFsFileNameBase + ".txt");	
+	uint32_t dof;
+	uint32_t iter;
+	for (int i = 0; i < partition.numSubdomains; i++) {
+		//printf("Subdomain %d\n", i);
+		//printf("jBounds are (%d, %d)\n", indexPtrFile[i], indexPtrFile[i+1]);
+		subdomainDOFs.clear();
+		iterationDOFs.clear();
+		for (int j = indexPtrFile[i]; j < indexPtrFile[i+1]; j++) {
+			subdomainFile >> dof;
+			subdomainDOFs.push_back(dof);
+			iterationFile >> iter;
+			iterationDOFs.push_back(iter);
+			// printf("DOF %d\n", dof);
+			// printf("Iter %d\n", iter);
+		}
+		partition.territoryDOFsInterior.push_back(subdomainDOFs);
+		partition.iterationLevelPerDOF.push_back(iterationDOFs);
+	}
+    
+}
+
+/*
 void readSubdomainAndIterationFromFile2(meshPartitionForStage &partition, std::string PARENT_DIRECTORY, uint32_t stageID)
 {
 
@@ -85,9 +173,9 @@ void readSubdomainAndIterationFromFile2(meshPartitionForStage &partition, std::s
 		partition.iterationLevelPerDOF.push_back(iterationDOFs);
 	}
 }
-
+*/
 //////////////////////////////////////////////////////////////
-
+/*
 void readSubdomainAndIterationFromFile(meshPartitionForStage &partition, std::string PARENT_DIRECTORY, uint32_t stageID)
 {
 	// ESTABLISH NAMING OF FILES BASED ON THE STAGE
@@ -169,3 +257,4 @@ void readSubdomainAndIterationFromFile(meshPartitionForStage &partition, std::st
 		partition.iterationLevelPerDOF.push_back(iterationDOFs);
 	}
 }
+*/
