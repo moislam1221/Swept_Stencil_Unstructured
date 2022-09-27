@@ -12,7 +12,6 @@ using namespace std;
 #include "helper.h"
 #include "mesh.h"
 #include "readFromFile.h"
-#include "seeds.h"
 #include "subdomains.h"
 #include "toDevice.h"
 #include "global.h"
@@ -22,29 +21,60 @@ using namespace std;
 #include "print.h"
 #include "debug.h"
 
-//# define PRINT_SOLUTION
-# define SAVE_SOLUTION
+// # define PRINT_SOLUTION
+// # define SAVE_SOLUTION
 
 int main (int argc, char * argv[]) 
 {
-	// Define number of dofs for the mesh
-	uint32_t Ndofs = 5876; // this is for the coarse airfoil mesh condensed
-	uint32_t numSweptCycles = 200;
+	/*************** USER INPUTS **************************/
+
+    // CASE TO RUN
+    std::string CASE = "Airfoil_90k"; // {"Airfoil_6k", "Airfoil_90k"}
+ 
+    // Directory containing space-time files
+    std::string meshDirectory;
+    // Number of DOFs, swept cycles, and Jacobi iterations per half cycle of swept
+	uint32_t Ndofs, numSweptCycles, numJacobiItersHalfCycle; 
+
+    // Specify proper inputs based on case
+    if (CASE == "Airfoil_6k") {
+    	meshDirectory = "Unstructured_Mesh/Airfoil_Mesh_6k/"; 
+	    Ndofs = 5876;
+	    numSweptCycles = 1; 
+	    numJacobiItersHalfCycle = 6; 
+	}
+    else if (CASE == "Airfoil_25k") {
+    	meshDirectory = "Unstructured_Mesh/Airfoil_Mesh_25k/"; 
+	    Ndofs = 23364;
+	    numSweptCycles = 1; 
+	    numJacobiItersHalfCycle = 6; 
+	}
+    else if (CASE == "Airfoil_90k") {
+    	meshDirectory = "Unstructured_Mesh/Airfoil_Mesh_90k/"; 
+	    Ndofs = 91936;
+	    numSweptCycles = 1; 
+	    numJacobiItersHalfCycle = 6; 
+	}
+
+	/*************** SETUP LINEAR SYSTEM Ax = b ON HOST/DEVICE **************************/
 	
-	// Define the linear system Ax = b
+	// PUT Ax = b ONTO THE DEVICE
+	
+    // Define matrix directory
+    std::string matrixDirectory = meshDirectory + "Matrix_Data";
 
 	// Initialize the linear system and allocate matrix data structures (indexPtr, nodeNeighbors, offdiags) 
 	linearSystem matrix;
 	matrix.Ndofs = Ndofs;
-	initializeAndLoadMatrixFromDirectory(matrix, "Unstructured_Mesh/Airfoil_Mesh_6k/Matrix_Data");   
+	initializeAndLoadMatrixFromDirectory(matrix, matrixDirectory);   
 
-	// Allocate matrix data structures to the GPU (is this even necessary? - yes! used by global memory solution) 
+	// Allocate matrix data structures to the GPU (is this even necessary? 
 	linearSystemDevice matrix_d;
   	allocateMatrixDevice(matrix_d, matrix);
     copyMatrixDevice(matrix_d, matrix);
 	
-	/*************** GLOBAL MEMORY START **************************/
-	
+	/*************** (1) GLOBAL MEMORY START **************************/
+
 	printf("==================== GLOBAL MEMORY ALGORITHM =========================\n");
     
     // Create solution containers on the CPU
@@ -71,7 +101,7 @@ int main (int argc, char * argv[])
 	float residualGM;
 
 	// Number of total Jacobi iterations to perform
-	uint32_t numIterations = numSweptCycles * 12;
+    uint32_t numIterations = numSweptCycles * 12;
 
 	// Perform global memory iterations
 	float globalTime;	
@@ -103,95 +133,71 @@ int main (int argc, char * argv[])
 		solutionGM = du1_d;
 	}
 	printf("Number of Iterations = %d\n", numIterations);
-	
-	// SHARED MEMORY START 
+
+	/*************** (2) SHARED MEMORY START **************************/
 	
 	printf("==================== SHARED MEMORY ALGORITHM =========================\n");
 	
 	// Initialize iteration level
-	uint32_t * iterationLevel, * iterationLevel_d;
+	uint32_t * iterationLevel, * iterationLevel_d, * iterationLevelOutput_d;
 	iterationLevel = new uint32_t[Ndofs];
 	initializeToZerosInt(iterationLevel, Ndofs);
 	// Iteration Level
     cudaMalloc(&iterationLevel_d, sizeof(uint32_t) * Ndofs);
 	cudaMemcpy(iterationLevel_d, iterationLevel, sizeof(uint32_t) * Ndofs, cudaMemcpyHostToDevice);
+    cudaMalloc(&iterationLevelOutput_d, sizeof(uint32_t) * Ndofs);
+	cudaMemcpy(iterationLevelOutput_d, iterationLevel, sizeof(uint32_t) * Ndofs, cudaMemcpyHostToDevice);
 	
 	float * evenSolutionBuffer_d, * oddSolutionBuffer_d, * solution_d;
+	float * evenSolutionBufferOutput_d, * oddSolutionBufferOutput_d;
 	cudaMalloc(&evenSolutionBuffer_d, sizeof(float) * matrix.Ndofs);
 	cudaMalloc(&oddSolutionBuffer_d, sizeof(float) * matrix.Ndofs);
+	cudaMalloc(&evenSolutionBufferOutput_d, sizeof(float) * matrix.Ndofs);
+	cudaMalloc(&oddSolutionBufferOutput_d, sizeof(float) * matrix.Ndofs);
 	cudaMalloc(&solution_d, sizeof(float) * matrix.Ndofs);
 	uint32_t threadsPerBlock = 256;
 	uint32_t numBlocks = ceil((float)matrix.Ndofs / threadsPerBlock);
 	initializeToZerosDevice<<<numBlocks, threadsPerBlock>>>(evenSolutionBuffer_d, matrix.Ndofs);	
 	initializeToZerosDevice<<<numBlocks, threadsPerBlock>>>(oddSolutionBuffer_d, matrix.Ndofs);	
+	initializeToZerosDevice<<<numBlocks, threadsPerBlock>>>(evenSolutionBufferOutput_d, matrix.Ndofs);	
+	initializeToZerosDevice<<<numBlocks, threadsPerBlock>>>(oddSolutionBufferOutput_d, matrix.Ndofs);	
 	
-	// Number of Jacobi iterations to perform in half swept cycle
-	uint32_t numJacobiIters = 6;
-	
-	// DIRECTORY CONTAINING PARTITION AND LEVEL INFORMATION
-	std::string PARENT_DIRECTORY = "Unstructured_Mesh/Airfoil_Mesh_6k/";
+	// Temporary pointers for swapping	
+	float * tmp;
+	uint32_t * tmpInt;
 	
 	/*************** STAGE 1: UPPER PYRAMIDAL STAGE ************************/
-	
+
 	printf("==================== PERFORMING UPPER PYRAMIDAL PARTITIONING =========================\n");
 	
 	// INITIALIZE
 	meshPartitionForStage upperPyramidal;
-	upperPyramidal.numSubdomains = 25;
 
 	// SUBDOMAINS
-	readSubdomainAndIterationFromFile2(upperPyramidal, PARENT_DIRECTORY, 0);	
-	
+	newReadFileFunc(upperPyramidal, meshDirectory, 0);	
+
 	// HOST
 	createHaloRegions(upperPyramidal, matrix);
 	createTerritoriesHost(upperPyramidal);
 	constructLocalMatricesHost(upperPyramidal, matrix);
-	
+
 	// DEVICE
 	meshPartitionForStageDevice upperPyramidal_d;
 	allocatePartitionDevice(upperPyramidal_d, upperPyramidal, Ndofs);
 	copyPartitionDevice(upperPyramidal_d, upperPyramidal, Ndofs);
 	
 	// JACOBI
-	determineSharedMemoryAllocation(upperPyramidal);
-	stageAdvanceJacobiPerformance<<<upperPyramidal.numSubdomains, 512, upperPyramidal.sharedMemorySize>>>(evenSolutionBuffer_d, oddSolutionBuffer_d, iterationLevel_d, upperPyramidal_d, 0, numJacobiIters);
-	
-	// POSTPROCESSING	
-	assembleSolutionFromBuffers<<<numBlocks, threadsPerBlock>>>(solution_d, evenSolutionBuffer_d, oddSolutionBuffer_d, iterationLevel_d);
-	cudaMemcpy(iterationLevel, iterationLevel_d, sizeof(uint32_t) * Ndofs, cudaMemcpyDeviceToHost);	
-	uint32_t * iterationLevelUpperPyramidal = new uint32_t[Ndofs];
-	cudaMemcpy(iterationLevelUpperPyramidal, iterationLevel_d, sizeof(uint32_t) * Ndofs, cudaMemcpyDeviceToHost);	
+    determineSharedMemoryAllocation(upperPyramidal);
 
-#ifdef PRINT_SOLUTION
-	printf("================NUMBER OF ITERATIONS PERFORMED IN SHARED==============\n");
-	printDeviceArrayInt(iterationLevel_d, Ndofs);
-	printf("\n================SIMILARITY TO GLOBAL==============\n");
-	printDeviceSimilarity1D(solution_d, solutionGM, 1e-6, Ndofs);
-	printGlobalAndSharedMatchDevice(solution_d, solutionGM, iterationLevel_d, numIterations, Ndofs);
-#endif
-	// printGlobalAndSharedMatchDevice(solution_d, solutionGM, iterationLevel_d, numIterations, Ndofs);
-
-#ifdef SAVE_SOLUTION
-	// Save iteration level	
-  	ofstream iterationLevelFile;
-	iterationLevelFile.open(PARENT_DIRECTORY + "iteration_output_1.txt");
-	for (int i = 0; i < matrix.Ndofs; i++) {
-  		iterationLevelFile << iterationLevel[i];
-  		iterationLevelFile << "\n";
-	}
-  	iterationLevelFile.close();
-#endif
-	
 	/*************** STAGE 2: BRIDGE STAGE ************************/
 	
 	printf("==================== PERFORMING BRIDGE PARTITIONING =========================\n");
 
 	// INITIALIZE
 	meshPartitionForStage bridge;
-	bridge.numSubdomains = 35;
 
 	// SUBDOMAINS
-	readSubdomainAndIterationFromFile2(bridge, PARENT_DIRECTORY, 1);	
+	newReadFileFunc(bridge, meshDirectory, 1);	
 	
 	// HOST
 	createHaloRegions(bridge, matrix);
@@ -205,43 +211,16 @@ int main (int argc, char * argv[])
 	
 	// JACOBI
 	determineSharedMemoryAllocation(bridge);
-	stageAdvanceJacobiPerformance<<<bridge.numSubdomains, 512, bridge.sharedMemorySize>>>(evenSolutionBuffer_d, oddSolutionBuffer_d, iterationLevel_d, bridge_d, 0, numJacobiIters);
 
-	// POSTPROCESSING	
-	assembleSolutionFromBuffers<<<numBlocks, threadsPerBlock>>>(solution_d, evenSolutionBuffer_d, oddSolutionBuffer_d, iterationLevel_d);
-	cudaMemcpy(iterationLevel, iterationLevel_d, sizeof(uint32_t) * Ndofs, cudaMemcpyDeviceToHost);	
-	uint32_t * iterationLevelBridge = new uint32_t[Ndofs];
-	cudaMemcpy(iterationLevelBridge, iterationLevel_d, sizeof(uint32_t) * Ndofs, cudaMemcpyDeviceToHost);	
-
-#ifdef PRINT_SOLUTION
-	printf("================NUMBER OF ITERATIONS PERFORMED IN SHARED==============\n");
-	printDeviceArrayInt(iterationLevel_d, Ndofs);
-	printf("\n================SIMILARITY TO GLOBAL==============\n");
-	printDeviceSimilarity1D(solution_d, solutionGM, 1e-6, Ndofs);
-	printGlobalAndSharedMatchDevice(solution_d, solutionGM, iterationLevel_d, numIterations, Ndofs);
-#endif
-	// printGlobalAndSharedMatchDevice(solution_d, solutionGM, iterationLevel_d, numIterations, Ndofs);
-
-#ifdef SAVE_SOLUTION
-	// Save iteration level	
-	iterationLevelFile.open(PARENT_DIRECTORY + "iteration_output_2.txt");
-	for (int i = 0; i < matrix.Ndofs; i++) {
-  		iterationLevelFile << iterationLevel[i];
-  		iterationLevelFile << "\n";
-	}
-  	iterationLevelFile.close();
-#endif
-	
 	/*************** STAGE 3: LOWER PYRAMIDAL STAGE ************************/
 	
 	printf("==================== PERFORMING LOWER PYRAMIDAL PARTITIONING =========================\n");
 
 	// INITIALIZE
 	meshPartitionForStage lowerPyramidal;
-	lowerPyramidal.numSubdomains = 22;
 
 	// SUBDOMAINS
-	readSubdomainAndIterationFromFile2(lowerPyramidal, PARENT_DIRECTORY, 2);	
+	newReadFileFunc(lowerPyramidal, meshDirectory, 2);	
 	
 	// HOST
 	createHaloRegions(lowerPyramidal, matrix);
@@ -255,42 +234,16 @@ int main (int argc, char * argv[])
 	
 	// JACOBI
 	determineSharedMemoryAllocation(lowerPyramidal);
-	stageAdvanceJacobiPerformance<<<lowerPyramidal.numSubdomains, 512, lowerPyramidal.sharedMemorySize>>>(evenSolutionBuffer_d, oddSolutionBuffer_d, iterationLevel_d, lowerPyramidal_d, 0, 2*numJacobiIters); 
-		
-	// POSTPROCESSING	
-	assembleSolutionFromBuffers<<<numBlocks, threadsPerBlock>>>(solution_d, evenSolutionBuffer_d, oddSolutionBuffer_d, iterationLevel_d);
-	cudaMemcpy(iterationLevel, iterationLevel_d, sizeof(uint32_t) * Ndofs, cudaMemcpyDeviceToHost);	
 
-#ifdef PRINT_SOLUTION
-	printf("================NUMBER OF ITERATIONS PERFORMED IN SHARED==============\n");
-	printDeviceArrayInt(iterationLevel_d, Ndofs);
-	printf("\n================SIMILARITY TO GLOBAL==============\n");
-	printDeviceSimilarity1D(solution_d, solutionGM, 1e-6, Ndofs);
-	printGlobalAndSharedMatchDevice(solution_d, solutionGM, iterationLevel_d, numIterations, Ndofs);
-#endif
-	// printGlobalAndSharedMatchDevice(solution_d, solutionGM, iterationLevel_d, numIterations, Ndofs);
-
-#ifdef SAVE_SOLUTION
-	// Save iteration level	
-	iterationLevelFile.open(PARENT_DIRECTORY + "iteration_output_3.txt");
-	for (int i = 0; i < matrix.Ndofs; i++) {
-		// printf("Iteration Level[%d] = %d\n", i, iterationLevel[i]);
-  		iterationLevelFile << iterationLevel[i];
-  		iterationLevelFile << "\n";
-	}
-  	iterationLevelFile.close();
-#endif
-	
 	/*************** STAGE 4: DUAL BRIDGE STAGE ************************/
 	
-	printf("==================== PERFORMING DUAL BRIDGE PARTITIONING =========================\n");
+    printf("==================== PERFORMING DUAL BRIDGE PARTITIONING =========================\n");
 	
 	// INITIALIZE
 	meshPartitionForStage dualBridge;
-	dualBridge.numSubdomains = 35;
 
 	// SUBDOMAINS
-	readSubdomainAndIterationFromFile2(dualBridge, PARENT_DIRECTORY, 3);
+	newReadFileFunc(dualBridge, meshDirectory, 3);	
 
 	// HOST
 	createHaloRegions(dualBridge, matrix);
@@ -303,44 +256,21 @@ int main (int argc, char * argv[])
 	copyPartitionDevice(dualBridge_d, dualBridge, Ndofs);
 	
 	// JACOBI
-	// Perform Jacobi Iteration kernel call
 	determineSharedMemoryAllocation(dualBridge);
-	stageAdvanceJacobiPerformance<<<dualBridge.numSubdomains, 512, dualBridge.sharedMemorySize>>>(evenSolutionBuffer_d, oddSolutionBuffer_d, iterationLevel_d, dualBridge_d, 0, 2*numJacobiIters); 
 	
-	// POSTPROCESSING	
-	assembleSolutionFromBuffers<<<numBlocks, threadsPerBlock>>>(solution_d, evenSolutionBuffer_d, oddSolutionBuffer_d, iterationLevel_d);
-	cudaMemcpy(iterationLevel, iterationLevel_d, sizeof(uint32_t) * Ndofs, cudaMemcpyDeviceToHost);	
-
-#ifdef PRINT_SOLUTION
-	printf("================NUMBER OF ITERATIONS PERFORMED IN SHARED==============\n");
-	printDeviceArrayInt(iterationLevel_d, Ndofs);
-	printf("\n================SIMILARITY TO GLOBAL==============\n");
-	printDeviceSimilarity1D(solution_d, solutionGM, 1e-6, Ndofs);
-	printGlobalAndSharedMatchDevice(solution_d, solutionGM, iterationLevel_d, numIterations, Ndofs);
-#endif
-	// printGlobalAndSharedMatchDevice(solution_d, solutionGM, iterationLevel_d, numIterations, Ndofs);
-
-#ifdef SAVE_SOLUTION
-	// Save iteration level	
-	iterationLevelFile.open(PARENT_DIRECTORY + "iteration_output_4.txt");
-	for (int i = 0; i < matrix.Ndofs; i++) {
-		// printf("Iteration Level[%d] = %d\n", i, iterationLevel[i]);
-  		iterationLevelFile << iterationLevel[i];
-  		iterationLevelFile << "\n";
-	}
-  	iterationLevelFile.close();
-#endif
-	
-	/*************** SUBDOMAIN CONSTRUCTION COMPLETE - PERFORM ACTUAL ITERATIONS ON GPU ************************/
-	
-	// Initialize containers for solution and iteration variables
+    /*************** SUBDOMAIN CONSTRUCTION COMPLETE - PERFORM ACTUAL ITERATIONS ON GPU ************************/
+	 
+    // Initialize containers for solution and iteration variables
 	threadsPerBlock = 128;
 	numBlocks = ceil((float)matrix.Ndofs / threadsPerBlock);
 	initializeToZerosDevice<<<numBlocks, threadsPerBlock>>>(evenSolutionBuffer_d, matrix.Ndofs);	
 	initializeToZerosDevice<<<numBlocks, threadsPerBlock>>>(oddSolutionBuffer_d, matrix.Ndofs);	
+	initializeToZerosDevice<<<numBlocks, threadsPerBlock>>>(evenSolutionBufferOutput_d, matrix.Ndofs);	
+	initializeToZerosDevice<<<numBlocks, threadsPerBlock>>>(oddSolutionBufferOutput_d, matrix.Ndofs);	
 	initializeToZerosDevice<<<numBlocks, threadsPerBlock>>>(solution_d, matrix.Ndofs);	
     initializeToZerosInt(iterationLevel, matrix.Ndofs);
     cudaMemcpy(iterationLevel_d, iterationLevel, sizeof(uint32_t) * Ndofs, cudaMemcpyHostToDevice);
+    cudaMemcpy(iterationLevelOutput_d, iterationLevel, sizeof(uint32_t) * Ndofs, cudaMemcpyHostToDevice);
 	uint32_t minJacobiIters = 0;
 	uint32_t maxJacobiIters = 0;
 	uint32_t maxJacobiShift = 0;
@@ -369,52 +299,68 @@ int main (int argc, char * argv[])
 	for (int sweptIteration = 0; sweptIteration < numSweptCycles; sweptIteration++) {
 
 		// Print cycle number
-		printf("CYCLE %d\n", sweptIteration);
+		// printf("CYCLE %d\n", sweptIteration);
 
 		if (sweptIteration > 0) {
-			maxJacobiShift += 12;
+			maxJacobiShift += 2 * numJacobiItersHalfCycle;
 		}
 
 		// Set number of Jacobi iterations for first two stages
-		maxJacobiIters += 6;
+		maxJacobiIters += numJacobiItersHalfCycle;
 
 		// STAGE 1: UPPER PYRAMIDAL
 		cudaEventRecord(start_1, 0);
+		// V1 kernel (non-overlapping)
 		stageAdvanceJacobiPerformance<<<upperPyramidal.numSubdomains, 512, upperPyramidal.sharedMemorySize>>>(evenSolutionBuffer_d, oddSolutionBuffer_d, iterationLevel_d, upperPyramidal_d, minJacobiIters, maxJacobiIters, maxJacobiShift);
-		cudaEventRecord(stop_1, 0);
+		//
+        cudaEventRecord(stop_1, 0);
 		cudaEventSynchronize(stop_1);
 		cudaEventElapsedTime(&time_stage_1, start_1, stop_1);
 		time_total_1 += time_stage_1;
 
 		if (sweptIteration > 0) {
-			minJacobiIters += 6;
+			minJacobiIters += numJacobiItersHalfCycle;
 		}
 	
 		// STAGE 2: BRIDGE STAGE
 		cudaEventRecord(start_2, 0);
-		stageAdvanceJacobiPerformance<<<bridge.numSubdomains, 512, bridge.sharedMemorySize>>>(evenSolutionBuffer_d, oddSolutionBuffer_d, iterationLevel_d, bridge_d, minJacobiIters, maxJacobiIters, maxJacobiShift);
+		// V2 kernel (overlapping)
+		copySolutionToOutput<<<numBlocks, 256>>>(evenSolutionBufferOutput_d, oddSolutionBufferOutput_d, evenSolutionBuffer_d, oddSolutionBuffer_d,  iterationLevel_d, iterationLevelOutput_d, Ndofs);
+		stageAdvanceJacobiPerformanceV2OverlapExperimental<<<bridge.numSubdomains, 512, bridge.sharedMemorySize>>>(evenSolutionBufferOutput_d, oddSolutionBufferOutput_d, evenSolutionBuffer_d, oddSolutionBuffer_d,  iterationLevel_d, iterationLevelOutput_d, bridge_d, minJacobiIters, maxJacobiIters, Ndofs, maxJacobiShift);
+		tmp = evenSolutionBuffer_d; evenSolutionBuffer_d = evenSolutionBufferOutput_d; evenSolutionBufferOutput_d = tmp;
+		tmp = oddSolutionBuffer_d; oddSolutionBuffer_d = oddSolutionBufferOutput_d; oddSolutionBufferOutput_d = tmp;
+		tmpInt = iterationLevel_d; iterationLevel_d = iterationLevelOutput_d; iterationLevelOutput_d = tmpInt;
+		//
 		cudaEventRecord(stop_2, 0);
 		cudaEventSynchronize(stop_2);
 		cudaEventElapsedTime(&time_stage_2, start_2, stop_2);
 		time_total_2 += time_stage_2;
 
 		// Set number of Jacobi iterations for second two stages
-		maxJacobiIters += 6;
+		maxJacobiIters += numJacobiItersHalfCycle;
 
 		// STAGE 3: LOWER PYRAMIDAL
 		cudaEventRecord(start_3, 0);
+		// V1 kernel (non-overlapping)
 		stageAdvanceJacobiPerformance<<<lowerPyramidal.numSubdomains, 512, lowerPyramidal.sharedMemorySize>>>(evenSolutionBuffer_d, oddSolutionBuffer_d, iterationLevel_d, lowerPyramidal_d, minJacobiIters, maxJacobiIters, maxJacobiShift);
-		cudaEventRecord(stop_3, 0);
+		// 
+        cudaEventRecord(stop_3, 0);
 		cudaEventSynchronize(stop_3);
 		cudaEventElapsedTime(&time_stage_3, start_3, stop_3);
 		time_total_3 += time_stage_3;
 		
 		// Set number of Jacobi iterations for second two stages
-		minJacobiIters += 6;
+		minJacobiIters += numJacobiItersHalfCycle;
 		
 		// Dual Bridge
 		cudaEventRecord(start_4, 0);
-		stageAdvanceJacobiPerformance<<<dualBridge.numSubdomains, 512, dualBridge.sharedMemorySize>>>(evenSolutionBuffer_d, oddSolutionBuffer_d, iterationLevel_d, dualBridge_d, minJacobiIters, maxJacobiIters, maxJacobiShift);
+		// V2 kernel (overlapping)
+		copySolutionToOutput<<<numBlocks, 256>>>(evenSolutionBufferOutput_d, oddSolutionBufferOutput_d, evenSolutionBuffer_d, oddSolutionBuffer_d,  iterationLevel_d, iterationLevelOutput_d, Ndofs);
+		stageAdvanceJacobiPerformanceV2OverlapExperimental<<<dualBridge.numSubdomains, 512, dualBridge.sharedMemorySize>>>(evenSolutionBufferOutput_d, oddSolutionBufferOutput_d, evenSolutionBuffer_d, oddSolutionBuffer_d, iterationLevel_d, iterationLevelOutput_d, dualBridge_d, minJacobiIters, maxJacobiIters, Ndofs, maxJacobiShift);
+		tmp = evenSolutionBuffer_d; evenSolutionBuffer_d = evenSolutionBufferOutput_d; evenSolutionBufferOutput_d = tmp;
+		tmp = oddSolutionBuffer_d; oddSolutionBuffer_d = oddSolutionBufferOutput_d; oddSolutionBufferOutput_d = tmp;
+		tmpInt = iterationLevel_d; iterationLevel_d = iterationLevelOutput_d; iterationLevelOutput_d = tmpInt;
+		// 
 		cudaEventRecord(stop_4, 0);
 		cudaEventSynchronize(stop_4);
 		cudaEventElapsedTime(&time_stage_4, start_4, stop_4);
@@ -423,37 +369,23 @@ int main (int argc, char * argv[])
 	}
 
 	// Set number of Jacobi iterations for final fill-in stage
-	maxJacobiShift += 6;
+	maxJacobiShift += numJacobiItersHalfCycle;
 	bool finalStage = true; 
 
 	// FINAL STAGE
 	cudaEventRecord(start_5, 0);
+	// V1 kernel (non-overlapping)
 	stageAdvanceJacobiPerformance<<<upperPyramidal.numSubdomains, 512, upperPyramidal.sharedMemorySize>>>(evenSolutionBuffer_d, oddSolutionBuffer_d, iterationLevel_d, upperPyramidal_d, minJacobiIters, maxJacobiIters, maxJacobiShift, finalStage);
+	//
 	cudaEventRecord(stop_5, 0);
 	cudaEventSynchronize(stop_5);
 	cudaEventElapsedTime(&time_total_5, start_5, stop_5);
 
-#ifdef SAVE_SOLUTION	
-	// Print iteration level
-	cudaMemcpy(iterationLevel, iterationLevel_d, sizeof(uint32_t) * Ndofs, cudaMemcpyDeviceToHost);	
-	iterationLevelFile.open(PARENT_DIRECTORY + "iteration_output_final.txt");
-	for (int i = 0; i < matrix.Ndofs; i++) {
-  		iterationLevelFile << iterationLevel[i];
-  		iterationLevelFile << "\n";
-	}
-  	iterationLevelFile.close();
-#endif
 
 	// Print information
-	printf("\n==================== FINAL INFORMATION =========================\n");
-	assembleSolutionFromBuffers<<<numBlocks, threadsPerBlock>>>(solution_d, evenSolutionBuffer_d, oddSolutionBuffer_d, iterationLevel_d);
-#ifdef PRINT_SOLUTION
-	printf("================NUMBER OF ITERATIONS PERFORMED IN SHARED==============\n");
-	printDeviceArrayInt(iterationLevel_d, Ndofs);
-	printf("\n================SIMILARITY TO GLOBAL==============\n");
-	printDeviceSimilarity1D(solution_d, solutionGM, 1e-6, Ndofs);
-	printGlobalAndSharedMatchDevice(solution_d, solutionGM, iterationLevel_d, numIterations, Ndofs);
-#endif
+	printf("==================== FINAL INFORMATION =========================\n");
+	assembleSolutionFromBuffers<<<numBlocks, threadsPerBlock>>>(solution_d, evenSolutionBuffer_d, oddSolutionBuffer_d, iterationLevel_d, Ndofs);
+
 	// Compute L2 residual
 	residual = computeL2Residual(solution_d, matrix_d);
 	printf("========================RESIDUAL=====================================================================\n");
@@ -472,5 +404,23 @@ int main (int argc, char * argv[])
 	printf("Time for final step is %f\n", time_total_5);
 	printf("Speedup is %f\n", globalTime / sweptTime);
 
+#ifdef SAVE_SOLUTION	
+	// Print iteration level
+	cudaMemcpy(iterationLevel, iterationLevel_d, sizeof(uint32_t) * Ndofs, cudaMemcpyDeviceToHost);	
+	iterationLevelFile.open(PARENT_DIRECTORY + "iteration_output_final.txt");
+	for (int i = 0; i < matrix.Ndofs; i++) {
+  		iterationLevelFile << iterationLevel[i];
+  		iterationLevelFile << "\n";
+	}
+  	iterationLevelFile.close();
+#endif
+
+#ifdef PRINT_SOLUTION
+	printf("================NUMBER OF ITERATIONS PERFORMED IN SHARED==============\n");
+	printDeviceArrayInt(iterationLevel_d, Ndofs);
+	printf("\n================SIMILARITY TO GLOBAL==============\n");
+	printDeviceSimilarity1D(solution_d, solutionGM, 1e-6, Ndofs);
+	printGlobalAndSharedMatchDevice(solution_d, solutionGM, iterationLevel_d, numIterations, Ndofs);
+#endif
 }
 
